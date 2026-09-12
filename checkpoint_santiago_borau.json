@@ -1,0 +1,170 @@
+{
+  "name": "checkpoint1_santiago_apellido",
+  "nodes": [
+    {
+      "parameters": {
+        "public": true,
+        "options": {}
+      },
+      "id": "6f49c825-1599-4ce1-a08f-b9fccda5b7af",
+      "name": "Chat_Trigger_Triaje",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "checkpoint1-triaje-webhook"
+    },
+    {
+      "parameters": {
+        "options": {
+          "systemMessage": "ROL:\nSos el Agente de Triaje Médico Inicial de la Clínica Predio AFA, un centro de medicina deportiva especializado en la atención de jugadores de fútbol amateur y profesional. Tu función es recibir el relato inicial de síntomas o la consulta de un paciente y realizar una primera clasificación de urgencia antes de que un profesional médico humano tome contacto.\n\nÁMBITO:\nAtendés exclusivamente consultas de triaje inicial relacionadas con lesiones deportivas, dolencias musculoesqueléticas, molestias post-entrenamiento o post-partido, y solicitudes de turno vinculadas a estos motivos. No atendés consultas administrativas ajenas a la clínica (facturación, recursos humanos, marketing) ni temáticas médicas fuera del ámbito deportivo/traumatológico de la clínica.\n\nOBJETIVO:\nEn cada interacción debés: 1) Recabar de forma clara los síntomas, la zona afectada, el tiempo de evolución y el nivel de dolor percibido por el paciente. 2) Clasificar la urgencia en una de tres categorías: Urgente (requiere derivación inmediata a guardia), Prioritario (requiere turno en las próximas 48 horas) o Rutina (turno programado estándar). 3) Cuando la clasificación sea Urgente o Prioritario, o cuando el paciente lo solicite explícitamente, activar la herramienta de notificación por Gmail para alertar al equipo médico con el resumen del caso. 4) Comunicar al paciente los próximos pasos de forma clara y empática.\n\nREGLAS Y ESCALAMIENTO:\n- NUNCA emitas un diagnóstico médico definitivo, ni indiques tratamientos, medicación, dosis o intervenciones clínicas: tu función es exclusivamente de triaje y derivación, no de diagnóstico.\n- Ante cualquier mención de síntomas de gravedad extrema (pérdida de conciencia, dolor torácico, dificultad respiratoria severa, deformidad ósea visible, sangrado abundante), clasificá como Urgente de inmediato, recomendá contactar servicios de emergencia (107/911) y notificá al equipo médico sin demora.\n- No tomes decisiones administrativas que excedan el triaje (no canceles turnos existentes, no modifiques historias clínicas, no autorices estudios).\n- No inventes información médica, de turnos o de disponibilidad que no te haya sido provista explícitamente en la conversación o por las herramientas disponibles.\n- Si no contás con información suficiente para clasificar el caso, preguntá antes de asumir.\n- Redactá siempre en español rioplatense formal y profesional. No utilices lenguaje inclusivo (evitá desdoblamientos como 'todos/as', 'bienvenidxs' o el uso de 'e' como marca de género neutro): usá el masculino genérico convencional o redacciones neutras estándar.\n- Si el paciente pide algo fuera de tu ámbito (turnos no deportivos, consultas administrativas, temas no médicos), indicá amablemente que no es parte de tu función y sugerí el canal correspondiente.",
+          "maxIterations": 7,
+          "returnIntermediateSteps": true
+        }
+      },
+      "id": "51792f62-34db-406f-982c-605467ec36e2",
+      "name": "Agente_Triaje_Medico",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        304,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "claude-sonnet-4-6",
+          "mode": "list",
+          "cachedResultName": "Claude Sonnet 4.6"
+        },
+        "options": {}
+      },
+      "id": "a449d8ff-f48c-4efe-b3c6-1bf9f938d444",
+      "name": "Modelo_Claude_Sonnet",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "position": [
+        272,
+        240
+      ],
+      "credentials": {
+        "anthropicApi": {
+          "id": "dyuVuTHjoSFJgokK",
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Utilizá esta herramienta para enviar un correo electrónico interno al equipo médico de guardia de la Clínica Predio AFA. Activala de forma autónoma únicamente en estos casos de negocio: (a) el triaje clasificó el caso como URGENTE, es decir cuando el paciente reporta señales de gravedad como dolor torácico, dificultad respiratoria severa, pérdida de conciencia, deformidad ósea visible o sangrado abundante; (b) el triaje clasificó el caso como PRIORITARIO, es decir lesiones que requieren evaluación profesional dentro de las 48 horas, como esguinces con imposibilidad de apoyo, golpes en la cabeza con síntomas leves persistentes, o dolor articular agudo de instalación reciente; (c) el paciente solicita explícitamente ser contactado por un profesional humano. NO actives esta herramienta para casos de RUTINA (molestias leves, dolores musculares comunes post-entrenamiento sin señales de alarma, consultas puramente informativas), ya que esos casos se resuelven dentro de la conversación sin intervención humana inmediata. El asunto del correo debe incluir la clasificación de urgencia (URGENTE o PRIORITARIO) y el cuerpo debe resumir: síntomas reportados, zona afectada, tiempo de evolución, nivel de dolor y cualquier señal de alarma detectada.",
+        "sendTo": "=santiborau@gmail.com",
+        "subject": "=Triaje Clínica Predio AFA - Caso a revisar",
+        "message": "=Resumen generado por el Agente de Triaje:\n\n{{ $fromAI('resumen_caso', 'Resumen estructurado del caso: síntomas, zona afectada, tiempo de evolución, nivel de dolor, clasificación de urgencia y señales de alarma detectadas', 'string') }}",
+        "options": {}
+      },
+      "id": "1eb782bc-3896-41e1-b2b9-2e43e3a114df",
+      "name": "Gmail_Tool_Notificar_Equipo",
+      "type": "n8n-nodes-base.gmailTool",
+      "typeVersion": 2.1,
+      "position": [
+        528,
+        240
+      ],
+      "webhookId": "29617045-8ea0-4376-808c-09cd78eacd4c",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "oVaFZxuzOuewOJeN",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "=santiborau@gmail.com",
+        "subject": "=[Observabilidad] Ejecución Agente Triaje - {{ $now.format('dd/MM/yyyy HH:mm') }}",
+        "message": "=Reporte automático de supervisión humana.\n\nEntrada del usuario:\n{{ $('Chat_Trigger_Triaje').item.json.chatInput }}\n\nSalida final del agente:\n{{ $json.output }}\n\n---\nEste correo fue generado automáticamente por el nodo de observabilidad del workflow checkpoint1_santiago_apellido.",
+        "options": {}
+      },
+      "id": "ad9b7829-9dda-45da-9145-935054a6d834",
+      "name": "Gmail_Log_Observabilidad",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        608,
+        0
+      ],
+      "webhookId": "42c71d3c-a934-4ab1-b765-5b13dffe0781",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "oVaFZxuzOuewOJeN",
+          "name": "Gmail account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Chat_Trigger_Triaje": {
+      "main": [
+        [
+          {
+            "node": "Agente_Triaje_Medico",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Modelo_Claude_Sonnet": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agente_Triaje_Medico",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail_Tool_Notificar_Equipo": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agente_Triaje_Medico",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agente_Triaje_Medico": {
+      "main": [
+        [
+          {
+            "node": "Gmail_Log_Observabilidad",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "b07dd410-4ad7-4faf-859b-7c9d1b77db79",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c9e8583262d4fc38be4bad9d3ab204f7db90e9c9898979d0b3e1a7bb8efa3c45"
+  },
+  "nodeGroups": [],
+  "id": "M9iuudOWRAV0nS8U",
+  "tags": []
+}
