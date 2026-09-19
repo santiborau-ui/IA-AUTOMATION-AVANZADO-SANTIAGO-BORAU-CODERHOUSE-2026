@@ -1,0 +1,711 @@
+{
+  "name": "manager_modulo2_borau_santiago",
+  "nodes": [
+    {
+      "parameters": {
+        "public": true,
+        "options": {}
+      },
+      "id": "4aa6d5ce-a2b5-42e1-ac67-d2d994e22f0e",
+      "name": "Chat_Trigger_Manager",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -1760,
+        224
+      ],
+      "webhookId": "manager-modulo2-webhook"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1",
+              "name": "mensaje_usuario",
+              "type": "string",
+              "value": "={{ $json.chatInput }}"
+            },
+            {
+              "id": "a2",
+              "name": "session_id",
+              "type": "string",
+              "value": "={{ $json.sessionId }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "3c2d6f97-792e-4410-9dd2-8e70a1d07a37",
+      "name": "Set_Contrato_Entrada",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1488,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Mensaje del usuario: {{ $json.mensaje_usuario }}",
+        "options": {
+          "systemMessage": "Sos el clasificador de intención de la Clínica Predio AFA. Tu única tarea es leer el mensaje del usuario y devolver EXCLUSIVAMENTE una de estas etiquetas, en mayúsculas y sin texto adicional, sin explicaciones ni puntuación:\n\nTRIAJE_SINTOMAS -> el usuario relata síntomas, dolores, lesiones deportivas o pide una evaluación médica.\nTURNOS_ADMINISTRATIVOS -> el usuario pide sacar, cambiar, confirmar o cancelar un turno sin describir síntomas, o hace una consulta administrativa de la clínica.\nFUERA_DE_AMBITO -> cualquier otro pedido: facturación ajena, temas no médicos, o cuando la intención no queda clara.\n\nRespondé solo con la etiqueta exacta.",
+          "maxIterations": 3
+        }
+      },
+      "id": "62e87676-c30d-4ebc-8ebf-d69d513d2dab",
+      "name": "Router_Triaje",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        -1248,
+        256
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "claude-sonnet-4-6",
+          "mode": "list",
+          "cachedResultName": "Claude Sonnet 4.6"
+        },
+        "options": {}
+      },
+      "id": "5e3f514a-fb0c-4508-9d6c-f261f88911c7",
+      "name": "Modelo_Claude_Router",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "position": [
+        -1392,
+        544
+      ],
+      "credentials": {
+        "anthropicApi": {
+          "id": "dyuVuTHjoSFJgokK",
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "id": "c1",
+                    "leftValue": "={{ $json.output.trim() }}",
+                    "rightValue": "TRIAJE_SINTOMAS",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "id": "c2",
+                    "leftValue": "={{ $json.output.trim() }}",
+                    "rightValue": "TURNOS_ADMINISTRATIVOS",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "955a56a1-2f00-4ced-8b32-5b7dcb5ee3e7",
+      "name": "Switch_Enrutador",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        -896,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "b1",
+              "name": "mensaje_usuario",
+              "type": "string",
+              "value": "={{ $('Set_Contrato_Entrada').item.json.mensaje_usuario }}"
+            },
+            {
+              "id": "b2",
+              "name": "session_id",
+              "type": "string",
+              "value": "={{ $('Set_Contrato_Entrada').item.json.session_id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "6d28fdda-1aa4-41b1-882b-8af6c9d489d3",
+      "name": "Set_Payload_Worker1",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -704,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "fAGTXal9VDEHpb3T",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/fAGTXal9VDEHpb3T",
+          "cachedResultName": "worker1_modulo2_borau_santiago"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "mensaje_usuario": "=={{ $json.mensaje_usuario }}",
+            "session_id": "=={{ $json.session_id }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "mensaje_usuario",
+              "displayName": "mensaje_usuario",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "session_id",
+              "displayName": "session_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "ccadfa5f-1b02-42b1-b9ec-4776d8f1683f",
+      "name": "Execute_Workflow_Worker_Triaje",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        -480,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "d1",
+              "leftValue": "={{ $json.data.urgencia }}",
+              "rightValue": "Rutina",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "5a62c922-b987-4af7-ab11-3b871b954d8c",
+      "name": "If_Requiere_Notificacion",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -240,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e1",
+              "name": "urgencia",
+              "type": "string",
+              "value": "={{ $json.data.urgencia }}"
+            },
+            {
+              "id": "e2",
+              "name": "resumen_caso",
+              "type": "string",
+              "value": "={{ $json.data.resumen }}"
+            },
+            {
+              "id": "e3",
+              "name": "session_id",
+              "type": "string",
+              "value": "={{ $('Set_Contrato_Entrada').item.json.session_id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "d4c541bb-f378-4a32-b7b3-3f6c35c7bd76",
+      "name": "Set_Payload_Worker2",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "uZZgKlHpVV3LE1sZ",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/uZZgKlHpVV3LE1sZ",
+          "cachedResultName": "worker2_modulo2_borau_santiago"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "urgencia": "=={{ $json.urgencia }}",
+            "resumen_caso": "={{ $json.resumen_caso }}",
+            "session_id": "=={{ $json.session_id }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "urgencia",
+              "displayName": "urgencia",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "resumen_caso",
+              "displayName": "resumen_caso",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "session_id",
+              "displayName": "session_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "aa65f8e1-91a9-4a90-8d96-7e6280ddf313",
+      "name": "Execute_Workflow_Worker_Redaccion",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        224,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f1",
+              "name": "worker_invocado",
+              "type": "string",
+              "value": "Worker_Triaje_Medico + Worker_Redaccion_Notificacion"
+            },
+            {
+              "id": "f2",
+              "name": "parametros_enviados",
+              "type": "string",
+              "value": "={{ JSON.stringify($('Set_Payload_Worker2').item.json) }}"
+            },
+            {
+              "id": "f3",
+              "name": "resultado",
+              "type": "string",
+              "value": "={{ JSON.stringify($json) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a5ae69df-0c8a-4a6d-9891-7e46cb7398fc",
+      "name": "Set_Log_Worker2",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        448,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "g1",
+              "name": "worker_invocado",
+              "type": "string",
+              "value": "Worker_Triaje_Medico"
+            },
+            {
+              "id": "g2",
+              "name": "parametros_enviados",
+              "type": "string",
+              "value": "={{ JSON.stringify($('Set_Payload_Worker1').item.json) }}"
+            },
+            {
+              "id": "g3",
+              "name": "resultado",
+              "type": "string",
+              "value": "={{ JSON.stringify($json) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "4fea2517-c7b2-4115-8f1c-d81fb4730e0c",
+      "name": "Set_Log_Rutina",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        0,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "h1",
+              "name": "worker_invocado",
+              "type": "string",
+              "value": "NINGUNO (respuesta administrativa directa)"
+            },
+            {
+              "id": "h2",
+              "name": "parametros_enviados",
+              "type": "string",
+              "value": "={{ JSON.stringify($('Set_Contrato_Entrada').item.json) }}"
+            },
+            {
+              "id": "h3",
+              "name": "resultado",
+              "type": "string",
+              "value": "Consulta redirigida al canal administrativo de turnos, sin delegar a un Worker"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "04c1b2d4-3a58-4260-a528-6c281a4e1906",
+      "name": "Set_Respuesta_Administrativa",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -352,
+        608
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "i1",
+              "name": "worker_invocado",
+              "type": "string",
+              "value": "NINGUNO (escalado a supervisor humano)"
+            },
+            {
+              "id": "i2",
+              "name": "parametros_enviados",
+              "type": "string",
+              "value": "={{ JSON.stringify($('Set_Contrato_Entrada').item.json) }}"
+            },
+            {
+              "id": "i3",
+              "name": "resultado",
+              "type": "string",
+              "value": "Intención dudosa o fuera de ámbito: caso escalado manualmente"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c6f336fe-c26a-4a76-85f4-1e4115c40f25",
+      "name": "Set_Escalar_Humano",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        112,
+        784
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "santiborau@gmail.com",
+        "subject": "=[Trazabilidad Manager-Worker] {{ $json.worker_invocado }}",
+        "message": "=Reporte automático de auditoría del Manager.\n\nWorker invocado: {{ $json.worker_invocado }}\n\nParámetros enviados:\n{{ $json.parametros_enviados }}\n\nResultado devuelto:\n{{ $json.resultado }}\n\n---\nGenerado por manager_modulo2_borau_santiago.",
+        "options": {}
+      },
+      "id": "9dd434d4-b572-428a-999c-0a8d2a306b41",
+      "name": "Gmail_Log_Trazabilidad",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        704,
+        352
+      ],
+      "webhookId": "c1c5edc9-3089-48d3-ae2e-b9ae49215897",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "oVaFZxuzOuewOJeN",
+          "name": "Gmail account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Chat_Trigger_Manager": {
+      "main": [
+        [
+          {
+            "node": "Set_Contrato_Entrada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set_Contrato_Entrada": {
+      "main": [
+        [
+          {
+            "node": "Router_Triaje",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Modelo_Claude_Router": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Router_Triaje",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Router_Triaje": {
+      "main": [
+        [
+          {
+            "node": "Switch_Enrutador",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch_Enrutador": {
+      "main": [
+        [
+          {
+            "node": "Set_Payload_Worker1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set_Respuesta_Administrativa",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set_Payload_Worker1": {
+      "main": [
+        [
+          {
+            "node": "Execute_Workflow_Worker_Triaje",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute_Workflow_Worker_Triaje": {
+      "main": [
+        [
+          {
+            "node": "If_Requiere_Notificacion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If_Requiere_Notificacion": {
+      "main": [
+        [
+          {
+            "node": "Set_Payload_Worker2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set_Log_Rutina",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set_Payload_Worker2": {
+      "main": [
+        [
+          {
+            "node": "Execute_Workflow_Worker_Redaccion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute_Workflow_Worker_Redaccion": {
+      "main": [
+        [
+          {
+            "node": "Set_Log_Worker2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set_Log_Worker2": {
+      "main": [
+        [
+          {
+            "node": "Gmail_Log_Trazabilidad",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set_Log_Rutina": {
+      "main": [
+        [
+          {
+            "node": "Gmail_Log_Trazabilidad",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set_Respuesta_Administrativa": {
+      "main": [
+        [
+          {
+            "node": "Gmail_Log_Trazabilidad",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set_Escalar_Humano": {
+      "main": [
+        [
+          {
+            "node": "Gmail_Log_Trazabilidad",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "6b0b75d0-ffcb-42bd-b617-9d8667081c02",
+  "meta": {
+    "instanceId": "c9e8583262d4fc38be4bad9d3ab204f7db90e9c9898979d0b3e1a7bb8efa3c45"
+  },
+  "nodeGroups": [],
+  "id": "4jV9hNVu8jBMtoTx",
+  "tags": []
+}

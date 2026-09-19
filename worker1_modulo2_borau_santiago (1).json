@@ -1,0 +1,262 @@
+{
+  "name": "worker1_modulo2_borau_santiago",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "mensaje_usuario"
+            },
+            {
+              "name": "session_id"
+            }
+          ]
+        }
+      },
+      "id": "2fdfd43e-8d9d-4677-a9fc-6084bda0d468",
+      "name": "Execute_Workflow_Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -688,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "text": "={{ $json.mensaje_usuario }}",
+        "attributes": {
+          "attributes": [
+            {
+              "name": "urgencia",
+              "description": "Clasificación de urgencia del caso: debe ser exactamente uno de estos tres valores: Urgente, Prioritario o Rutina, según las reglas de triaje de la Clínica Predio AFA (gravedad extrema = Urgente; requiere evaluación en 48hs = Prioritario; molestia leve sin señales de alarma = Rutina)."
+            },
+            {
+              "name": "zona_afectada",
+              "description": "Parte del cuerpo o zona afectada mencionada por el paciente."
+            },
+            {
+              "name": "tiempo_evolucion",
+              "description": "Hace cuánto tiempo tiene el síntoma, según lo relatado."
+            },
+            {
+              "name": "nivel_dolor",
+              "description": "Nivel de dolor percibido, si el paciente lo menciona o se puede inferir del relato."
+            },
+            {
+              "name": "senales_alarma",
+              "description": "Cualquier señal de alarma detectada: dolor torácico, dificultad respiratoria, pérdida de conciencia, deformidad ósea visible, sangrado abundante. Si no hay ninguna, indicar 'ninguna'."
+            },
+            {
+              "name": "resumen",
+              "description": "Resumen breve de 2-3 líneas del caso, en español rioplatense formal, sin lenguaje inclusivo, listo para incluir en un correo de notificación al equipo médico."
+            }
+          ]
+        },
+        "options": {
+          "systemPromptTemplate": "Sos el módulo de extracción y análisis de datos de triaje de la Clínica Predio AFA (un centro de medicina deportiva). Analizá el mensaje del paciente y extraé los atributos pedidos. NUNCA emitas un diagnóstico médico ni indiques tratamientos: tu única función es estructurar la información para que un humano evalúe. Ante señales de gravedad extrema, clasificá siempre como Urgente."
+        }
+      },
+      "id": "f3063217-558b-4ddf-b328-615acf49ba31",
+      "name": "Extractor_Sintomas",
+      "type": "@n8n/n8n-nodes-langchain.informationExtractor",
+      "typeVersion": 1,
+      "position": [
+        -464,
+        96
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "claude-sonnet-4-6",
+          "mode": "list",
+          "cachedResultName": "Claude Sonnet 4.6"
+        },
+        "options": {}
+      },
+      "id": "0fb15d9b-7165-41bf-ac90-7df67b761215",
+      "name": "Modelo_Claude_Worker1",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "position": [
+        -384,
+        320
+      ],
+      "credentials": {
+        "anthropicApi": {
+          "id": "dyuVuTHjoSFJgokK",
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "x1",
+              "name": "status",
+              "type": "string",
+              "value": "success"
+            },
+            {
+              "id": "x2",
+              "name": "data.urgencia",
+              "type": "string",
+              "value": "={{ $json.output.urgencia }}"
+            },
+            {
+              "id": "x3",
+              "name": "data.zona_afectada",
+              "type": "string",
+              "value": "={{ $json.output.zona_afectada }}"
+            },
+            {
+              "id": "x4",
+              "name": "data.tiempo_evolucion",
+              "type": "string",
+              "value": "={{ $json.output.tiempo_evolucion }}"
+            },
+            {
+              "id": "x5",
+              "name": "data.nivel_dolor",
+              "type": "string",
+              "value": "={{ $json.output.nivel_dolor }}"
+            },
+            {
+              "id": "x6",
+              "name": "data.senales_alarma",
+              "type": "string",
+              "value": "={{ $json.output.senales_alarma }}"
+            },
+            {
+              "id": "x7",
+              "name": "data.resumen",
+              "type": "string",
+              "value": "={{ $json.output.resumen }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "4213dab2-cc5a-4385-9c09-9efd976a1942",
+      "name": "Set_Contrato_Salida_Exito",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        32,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "y1",
+              "name": "status",
+              "type": "string",
+              "value": "error"
+            },
+            {
+              "id": "y2",
+              "name": "data.urgencia",
+              "type": "string",
+              "value": "Prioritario"
+            },
+            {
+              "id": "y3",
+              "name": "data.resumen",
+              "type": "string",
+              "value": "Fallo técnico en el módulo de análisis automático de síntomas — requiere revisión manual inmediata por parte del equipo médico."
+            },
+            {
+              "id": "y4",
+              "name": "error_message",
+              "type": "string",
+              "value": "={{ $json.error?.message || 'Error desconocido en Extractor_Sintomas' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "47f0fee7-cbab-4771-968a-2bf190d8beb9",
+      "name": "Set_Contrato_Salida_Error",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        48,
+        336
+      ]
+    }
+  ],
+  "pinData": {
+    "Execute_Workflow_Trigger": [
+      {
+        "json": {
+          "mensaje_usuario": "me duele el la rodilla desde ayer, no puedo apoyar el pie",
+          "session_id": "test-001"
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Execute_Workflow_Trigger": {
+      "main": [
+        [
+          {
+            "node": "Extractor_Sintomas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Modelo_Claude_Worker1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Extractor_Sintomas",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extractor_Sintomas": {
+      "main": [
+        [
+          {
+            "node": "Set_Contrato_Salida_Exito",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set_Contrato_Salida_Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "14eb3a58-4e7b-4196-aea6-3dba743aec10",
+  "meta": {
+    "instanceId": "c9e8583262d4fc38be4bad9d3ab204f7db90e9c9898979d0b3e1a7bb8efa3c45"
+  },
+  "nodeGroups": [],
+  "id": "fAGTXal9VDEHpb3T",
+  "tags": []
+}

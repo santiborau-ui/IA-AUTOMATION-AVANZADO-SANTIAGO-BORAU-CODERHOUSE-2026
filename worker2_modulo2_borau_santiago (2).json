@@ -1,0 +1,260 @@
+{
+  "name": "worker2_modulo2_borau_santiago",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "urgencia"
+            },
+            {
+              "name": "resumen_caso"
+            },
+            {
+              "name": "session_id"
+            }
+          ]
+        }
+      },
+      "id": "12f04730-2ef8-4889-a676-fd4786d0243c",
+      "name": "Execute_Workflow_Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -960,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Redactá un correo breve y profesional en español rioplatense para el equipo médico de guardia de la Clínica Predio AFA, informando un caso clasificado como {{ $json.urgencia }}. Resumen del caso: {{ $json.resumen_caso }}. El correo debe tener un tono claro, directo y accionable, sin lenguaje inclusivo (no usar desdoblamientos como 'todos/as' ni la 'e' como marca de género neutro). Devolvé solo el cuerpo del correo, sin asunto."
+      },
+      "id": "2a001eef-4a95-4d1c-97d4-33d5d3447154",
+      "name": "Redactor_Email",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.5,
+      "position": [
+        -672,
+        -128
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "claude-sonnet-4-6",
+          "mode": "list",
+          "cachedResultName": "Claude Sonnet 4.6"
+        },
+        "options": {}
+      },
+      "id": "9084f0f6-5a18-4102-930d-0bb2fe1b0a37",
+      "name": "Modelo_Claude_Worker2",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "position": [
+        -624,
+        240
+      ],
+      "credentials": {
+        "anthropicApi": {
+          "id": "dyuVuTHjoSFJgokK",
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "santiborau@gmail.com",
+        "subject": "=Triaje Clínica Predio AFA - Caso {{ $('Execute_Workflow_Trigger').item.json.urgencia }}",
+        "message": "={{ $json.text }}",
+        "options": {}
+      },
+      "id": "6d2397b8-b778-4386-a92e-fdc36bbf30da",
+      "name": "Gmail_Enviar",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -208,
+        -144
+      ],
+      "webhookId": "697cef1b-5cca-4009-8dc2-fe768db0e6dd",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "oVaFZxuzOuewOJeN",
+          "name": "Gmail account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "z1",
+              "name": "status",
+              "type": "string",
+              "value": "success"
+            },
+            {
+              "id": "z2",
+              "name": "data.enviado",
+              "type": "boolean",
+              "value": true
+            },
+            {
+              "id": "z3",
+              "name": "data.destinatario",
+              "type": "string",
+              "value": "santiborau@gmail.com"
+            },
+            {
+              "id": "z4",
+              "name": "data.asunto",
+              "type": "string",
+              "value": "={{ 'Triaje Clínica Predio AFA - Caso ' + $('Execute_Workflow_Trigger').item.json.urgencia }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e3416de9-f400-4703-b9ce-35fc79ee7cc1",
+      "name": "Set_Contrato_Salida_Exito",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "z6",
+              "name": "status",
+              "type": "string",
+              "value": "error"
+            },
+            {
+              "id": "z7",
+              "name": "data.enviado",
+              "type": "boolean",
+              "value": false
+            },
+            {
+              "id": "z8",
+              "name": "data.motivo",
+              "type": "string",
+              "value": "fallo_envio_email"
+            },
+            {
+              "id": "z9",
+              "name": "error_message",
+              "type": "string",
+              "value": "={{ $json.error?.message || 'Error desconocido al redactar o enviar el correo' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b0cb0ef7-ab22-4a1b-91c4-8c176092dfea",
+      "name": "Set_Contrato_Salida_Error",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        160,
+        256
+      ]
+    }
+  ],
+  "pinData": {
+    "Execute_Workflow_Trigger": [
+      {
+        "json": {
+          "urgencia": "prioritario",
+          "resumen_caso": "paciente con dolor agudo de rodilla desde ayer, no puede apoyar el pie con normalidad",
+          "session_id": "test-001"
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Execute_Workflow_Trigger": {
+      "main": [
+        [
+          {
+            "node": "Redactor_Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Modelo_Claude_Worker2": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Redactor_Email",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redactor_Email": {
+      "main": [
+        [
+          {
+            "node": "Gmail_Enviar",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set_Contrato_Salida_Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail_Enviar": {
+      "main": [
+        [
+          {
+            "node": "Set_Contrato_Salida_Exito",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set_Contrato_Salida_Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "c6248d4e-1dff-4bbc-9f9c-7f45e5be944c",
+  "meta": {
+    "instanceId": "c9e8583262d4fc38be4bad9d3ab204f7db90e9c9898979d0b3e1a7bb8efa3c45"
+  },
+  "nodeGroups": [],
+  "id": "uZZgKlHpVV3LE1sZ",
+  "tags": []
+}
