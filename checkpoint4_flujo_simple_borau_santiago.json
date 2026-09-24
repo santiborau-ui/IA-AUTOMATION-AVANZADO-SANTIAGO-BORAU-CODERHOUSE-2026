@@ -1,0 +1,338 @@
+{
+  "name": "checkpoint4_flujo_simple_borau_santiago",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "fs-0001-chat-trigger",
+      "name": "Chat_Trigger_CRM_Simple",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -800,
+        300
+      ],
+      "webhookId": "fs-webhook-crm-simple"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.chatInput }}",
+        "options": {
+          "systemMessage": "Sos el asistente de recepción de la Clínica Predio AFA (medicina deportiva). Un jugador/paciente te escribe por chat. Tu tarea es: 1) Conversar de forma breve y profesional, usando el historial de la conversación (memoria) si ya hay contexto previo. 2) Al final de CADA respuesta, devolvé EXCLUSIVAMENTE un bloque JSON (sin texto extra antes ni después, sin ``` markdown) con esta estructura exacta:\n{\"nombre_contacto\": \"string\", \"email_contacto\": \"string\", \"intencion\": \"CONSULTA_TURNO | CONSULTA_GENERAL | RECLAMO | OTRO\", \"accion_valida\": true o false, \"respuesta_sugerida\": \"string breve y profesional en español\"}\n\nReglas:\n- nombre_contacto: el nombre que el usuario haya dado en la conversación. Si no lo dio, \"Sin datos\".\n- email_contacto: el email que el usuario haya escrito explícitamente en el chat. Si no lo dio, cadena vacía \"\".\n- accion_valida: true SOLO si tenés nombre Y email Y una intención clara (por ejemplo pedido de turno). false si falta algún dato.\n- respuesta_sugerida: un borrador breve confirmando o pidiendo el dato que falte, sin inventar turnos ni precios."
+        }
+      },
+      "id": "fs-0002-ai-agente",
+      "name": "AI_Agente_CRM_Simple",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        -560,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "claude-sonnet-4-6",
+          "mode": "list",
+          "cachedResultName": "Claude Sonnet 4.6"
+        },
+        "options": {}
+      },
+      "id": "fs-0003-modelo-claude",
+      "name": "Modelo_Claude_CRM_Simple",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "position": [
+        -660,
+        520
+      ],
+      "credentials": {
+        "anthropicApi": {
+          "id": "dyuVuTHjoSFJgokK",
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "contextWindowLength": 10
+      },
+      "id": "fs-0004-memoria",
+      "name": "Memoria_Simple",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        -460,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "pf1",
+              "name": "nombre_contacto",
+              "type": "string",
+              "value": "={{ (() => { try { let rj = JSON.parse($json.text.trim().replace(/^```json/i,'').replace(/```$/,'').trim()); return rj.nombre_contacto !== undefined ? rj.nombre_contacto : ('Sin datos'); } catch (e) { return 'Sin datos'; } })() }}"
+            },
+            {
+              "id": "pf2",
+              "name": "email_contacto",
+              "type": "string",
+              "value": "={{ (() => { try { let rj = JSON.parse($json.text.trim().replace(/^```json/i,'').replace(/```$/,'').trim()); return rj.email_contacto !== undefined ? rj.email_contacto : (''); } catch (e) { return ''; } })() }}"
+            },
+            {
+              "id": "pf3",
+              "name": "intencion",
+              "type": "string",
+              "value": "={{ (() => { try { let rj = JSON.parse($json.text.trim().replace(/^```json/i,'').replace(/```$/,'').trim()); return rj.intencion !== undefined ? rj.intencion : ('OTRO'); } catch (e) { return 'OTRO'; } })() }}"
+            },
+            {
+              "id": "pf4",
+              "name": "accion_valida",
+              "type": "boolean",
+              "value": "={{ (() => { try { let rj = JSON.parse($json.text.trim().replace(/^```json/i,'').replace(/```$/,'').trim()); return rj.accion_valida !== undefined ? rj.accion_valida : (false); } catch (e) { return false; } })() }}"
+            },
+            {
+              "id": "pf5",
+              "name": "respuesta_sugerida",
+              "type": "string",
+              "value": "={{ (() => { try { let rj = JSON.parse($json.text.trim().replace(/^```json/i,'').replace(/```$/,'').trim()); return rj.respuesta_sugerida !== undefined ? rj.respuesta_sugerida : ('Gracias por tu mensaje, ¿podrías confirmarnos tu nombre y email de contacto?'); } catch (e) { return 'Gracias por tu mensaje, ¿podrías confirmarnos tu nombre y email de contacto?'; } })() }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fs-0005-set-parsear",
+      "name": "Set_Parsear_Respuesta",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -300,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "va1",
+              "leftValue": "={{ $json.accion_valida }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "va2",
+              "leftValue": "={{ $json.email_contacto }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "fs-0006-if-validar",
+      "name": "If_Validar_Accion",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -60,
+        300
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "fs-0007-noop-invalida",
+      "name": "NoOp_Accion_Invalida",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        180,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1-H0gRHqnbmS8PWLjhHen5dQ6vqQVctQ4aQoUvnXdouo",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Contactos",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Email": "={{ $json.email_contacto }}",
+            "Nombre": "={{ $json.nombre_contacto }}",
+            "Intención": "={{ $json.intencion }}",
+            "Última Interacción": "={{ $now.toISO() }}",
+            "Estado": "=Registrado desde el flujo simple (Agente + Memoria + CRM)"
+          },
+          "matchingColumns": [
+            "Email"
+          ],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "fs-0008-sheets-crm",
+      "name": "Sheets_CRM_Registrar",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        180,
+        180
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REEMPLAZAR_CON_TU_CREDENCIAL_GOOGLE_SHEETS",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "draft",
+        "operation": "create",
+        "subject": "=Re: consulta de {{ $json.nombre_contacto }} - Clínica Predio AFA",
+        "emailType": "text",
+        "message": "={{ $json.respuesta_sugerida }}",
+        "options": {
+          "sendTo": "={{ $json.email_contacto }}"
+        }
+      },
+      "id": "fs-0009-gmail-draft",
+      "name": "Gmail_Crear_Borrador_Simple",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        420,
+        180
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "oVaFZxuzOuewOJeN",
+          "name": "Gmail account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Chat_Trigger_CRM_Simple": {
+      "main": [
+        [
+          {
+            "node": "AI_Agente_CRM_Simple",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Modelo_Claude_CRM_Simple": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI_Agente_CRM_Simple",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Memoria_Simple": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI_Agente_CRM_Simple",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI_Agente_CRM_Simple": {
+      "main": [
+        [
+          {
+            "node": "Set_Parsear_Respuesta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set_Parsear_Respuesta": {
+      "main": [
+        [
+          {
+            "node": "If_Validar_Accion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If_Validar_Accion": {
+      "main": [
+        [
+          {
+            "node": "Sheets_CRM_Registrar",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "NoOp_Accion_Invalida",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sheets_CRM_Registrar": {
+      "main": [
+        [
+          {
+            "node": "Gmail_Crear_Borrador_Simple",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "instanceId": "checkpoint4-flujo-simple-clinica-predio-afa"
+  }
+}
