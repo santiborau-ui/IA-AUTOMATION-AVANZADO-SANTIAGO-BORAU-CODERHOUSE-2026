@@ -1,0 +1,374 @@
+{
+  "name": "PF_Worker_Memoria",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "88fa163e-f6a0-43a4-9cf4-c94aff240462",
+      "name": "Execute_Workflow_Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        32,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "mem-c1",
+              "leftValue": "={{ $json.operacion_memoria }}",
+              "rightValue": "leer",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b4c2a9a6-8045-4b0f-aa2f-f8f32f8cad3a",
+      "name": "If_Operacion_Leer",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        240,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "app2QjeQtQTYqYmYL",
+          "mode": "id",
+          "cachedResultUrl": "https://airtable.com/app2QjeQtQTYqYmYL"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblYkbgvjbJ5GxhAG",
+          "mode": "id",
+          "cachedResultName": "MEMORIA_SESIONES",
+          "cachedResultUrl": "https://airtable.com/app2QjeQtQTYqYmYL/tblYkbgvjbJ5GxhAG"
+        },
+        "filterByFormula": "={{ '{Session_ID} = \"' + $json.session_id + '\"' }}",
+        "options": {}
+      },
+      "id": "12ab19ae-adf8-4af2-a1cb-357d8f52700f",
+      "name": "Airtable_Buscar_Sesion",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "alwaysOutputData": true,
+      "position": [
+        480,
+        144
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "lImtz35xJF8jvI25",
+          "name": "Airtable Personal Access Token account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Lee la memoria persistente de la sesión (si existe). Si no existe, devuelve memoria vacía.\nconst filas = $input.all().map(i => (i.json.fields || i.json)).filter(f => f && f.Session_ID);\nconst f = filas[0];\nreturn [{ json: {\n  status: 'ok',\n  existe: !!f,\n  resumen_previo: f ? String(f['Resumen Consolidado'] || '') : '',\n  cantidad_mensajes: f ? Number(f['Cantidad_Mensajes'] || 0) : 0\n} }];\n"
+      },
+      "id": "f3fd6373-3a48-4b58-a6df-6a5115434f1c",
+      "name": "Armar_Memoria_Leida",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Arma la memoria actualizada: resumen acumulado de las últimas consultas (nunca el texto crudo completo).\nconst d = $('Execute_Workflow_Trigger').first().json;\nconst previo = String(d.resumen_previo || '');\nconst resp = String(d.respuesta_final || d.respuesta_agente || '').replace(/\\s+/g, ' ').slice(0, 220);\nconst linea = '[' + new Date().toISOString().slice(0, 10) + '] Consulta: ' + String(d.mensaje || '').replace(/\\s+/g, ' ').slice(0, 160) + ' | Respuesta: ' + resp;\nlet resumen = (previo ? previo + '\\n' : '') + linea;\nif (resumen.length > 1400) resumen = resumen.slice(resumen.length - 1400);\nconst ruta = String(d.ruta_final_registrada || d.ruta_final || '');\nconst estado = ruta.startsWith('ESCALAR') ? 'Escalado a supervisor humano' : 'Consulta administrativa';\nconst datos = JSON.stringify({ ultima_consulta: String(d.mensaje || '').slice(0, 120), ultima_ruta: ruta, ultimo_traceId: d.traceId });\nreturn [{ json: {\n  session_id: d.session_id,\n  resumen_consolidado_final: resumen,\n  estado_caso_actual: estado,\n  datos_clave_final: datos,\n  nuevo_contador: Number(d.cantidad_mensajes_previa || 0) + 1\n} }];\n"
+      },
+      "id": "e0b4a499-c06a-4c88-8ca9-5c33c46d406b",
+      "name": "Armar_Memoria_Nueva",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        448
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "base": {
+          "__rl": true,
+          "value": "app2QjeQtQTYqYmYL",
+          "mode": "id",
+          "cachedResultUrl": "https://airtable.com/app2QjeQtQTYqYmYL"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblYkbgvjbJ5GxhAG",
+          "mode": "id",
+          "cachedResultName": "MEMORIA_SESIONES",
+          "cachedResultUrl": "https://airtable.com/app2QjeQtQTYqYmYL/tblYkbgvjbJ5GxhAG"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Session_ID": "={{ $json.session_id }}",
+            "Fecha de Actualización": "={{ $now.toISO() }}",
+            "Resumen Consolidado": "={{ $json.resumen_consolidado_final }}",
+            "Estado del Caso": "={{ $json.estado_caso_actual }}",
+            "Datos Clave": "={{ $json.datos_clave_final }}",
+            "Cantidad_Mensajes": "={{ $json.nuevo_contador }}"
+          },
+          "matchingColumns": [
+            "Session_ID"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "Session_ID",
+              "displayName": "Session_ID",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Fecha de Actualización",
+              "displayName": "Fecha de Actualización",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Resumen Consolidado",
+              "displayName": "Resumen Consolidado",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Estado del Caso",
+              "displayName": "Estado del Caso",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "Nuevo",
+                  "value": "Nuevo"
+                },
+                {
+                  "name": "Evaluado - Rutina",
+                  "value": "Evaluado - Rutina"
+                },
+                {
+                  "name": "Notificado al equipo médico",
+                  "value": "Notificado al equipo médico"
+                },
+                {
+                  "name": "Consulta administrativa",
+                  "value": "Consulta administrativa"
+                },
+                {
+                  "name": "Escalado a supervisor humano",
+                  "value": "Escalado a supervisor humano"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Datos Clave",
+              "displayName": "Datos Clave",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Cantidad_Mensajes",
+              "displayName": "Cantidad_Mensajes",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "id": "a52545af-c2b3-4471-99c6-badd3c38a8b1",
+      "name": "Airtable_Guardar_Memoria",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        720,
+        448
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "lImtz35xJF8jvI25",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { status: 'ok', memoria_guardada: true } }];\n"
+      },
+      "id": "dabb0802-42c9-44ee-a391-6c0d21e6f116",
+      "name": "Salida_Memoria_Guardada",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        448
+      ]
+    },
+    {
+      "parameters": {
+        "content": "Worker: memoria de largo plazo\nMismo workflow para dos operaciones:\n- leer: busca la sesión en Airtable (MEMORIA_SESIONES) y devuelve el resumen previo.\n- guardar: actualiza la fila de la sesión (upsert por Session_ID: nunca duplica).\nSi Airtable falla al leer, el sistema responde igual, sin historial.",
+        "height": 150,
+        "width": 760,
+        "color": 4
+      },
+      "id": "222ffecc-36f0-413b-aacc-6184bd86b247",
+      "name": "Sticky_Memoria",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -352,
+        -16
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Execute_Workflow_Trigger": {
+      "main": [
+        [
+          {
+            "node": "If_Operacion_Leer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If_Operacion_Leer": {
+      "main": [
+        [
+          {
+            "node": "Airtable_Buscar_Sesion",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Armar_Memoria_Nueva",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Airtable_Buscar_Sesion": {
+      "main": [
+        [
+          {
+            "node": "Armar_Memoria_Leida",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Armar_Memoria_Nueva": {
+      "main": [
+        [
+          {
+            "node": "Airtable_Guardar_Memoria",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Airtable_Guardar_Memoria": {
+      "main": [
+        [
+          {
+            "node": "Salida_Memoria_Guardada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "xWxViKfQOfAISiYl",
+    "timezone": "America/Argentina/Buenos_Aires",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "49925796-b837-4bb3-b393-d09817ffa2dd",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c9e8583262d4fc38be4bad9d3ab204f7db90e9c9898979d0b3e1a7bb8efa3c45"
+  },
+  "nodeGroups": [],
+  "id": "SIZLvHcDPfVz0R7b",
+  "tags": []
+}

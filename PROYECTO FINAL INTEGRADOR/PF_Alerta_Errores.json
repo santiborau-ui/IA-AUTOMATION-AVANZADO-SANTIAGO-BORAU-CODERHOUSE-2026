@@ -1,0 +1,108 @@
+{
+  "name": "PF_Alerta_Errores",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "5de806f4-9ec7-44d8-87de-a2d114b8c2b6",
+      "name": "Error_Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        48,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Convierte el error técnico en un aviso para el equipo humano, en lenguaje de negocio.\nconst e = $input.first().json || {};\nconst ex = e.execution || {};\nconst err = ex.error || {};\nconst quien = (e.workflow && e.workflow.name) || 'un workflow del sistema';\nconst paso = ex.lastNodeExecuted || 'paso no identificado';\nconst motivo = String(err.message || 'sin detalle').slice(0, 300);\nconst asunto = 'ALERTA del sistema de atención - falla en ' + quien;\nconst cuerpo = [\n  'Se detectó una falla que el sistema no pudo resolver solo.',\n  '',\n  'Dónde: ' + quien + ' (paso: ' + paso + ')',\n  'Qué pasó: ' + motivo,\n  'Cuándo: ' + new Date().toISOString(),\n  'Ejecución: ' + (ex.url || ex.id || 'sin dato'),\n  '',\n  'Qué hacer: revisá la ejecución, corregí la causa (por ejemplo, una credencial vencida o un servicio caído) y volvé a enviar la consulta. '\n  + 'El sistema no duplica registros ni envíos, así que reenviar es seguro.',\n  '',\n  'Este aviso no incluye datos de pacientes.'\n].join('\\n');\nreturn [{ json: { asunto, cuerpo } }];\n"
+      },
+      "id": "e7ec7aa9-fee4-4601-b1ab-bb7188519ccb",
+      "name": "Preparar_Aviso_Equipo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        288,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "santiborau@gmail.com",
+        "subject": "={{ $json.asunto }}",
+        "emailType": "text",
+        "message": "={{ $json.cuerpo }}",
+        "options": {}
+      },
+      "id": "36ecaea1-e320-4a85-ac1b-4751e5a72475",
+      "name": "Gmail_Alerta_Equipo_Humano",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        528,
+        208
+      ],
+      "retryOnFail": false,
+      "webhookId": "0cf0ee79-9ef7-4d70-9dd1-12f41160309a",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "oVaFZxuzOuewOJeN",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "Alerta global de errores\nSi cualquier workflow del sistema falla sin una rama de error propia, n8n ejecuta este workflow y avisa por Gmail al equipo humano.\nSe activa en Settings > Error workflow de cada workflow.",
+        "height": 140,
+        "width": 640,
+        "color": 3
+      },
+      "id": "c76eb672-9c65-482e-bedb-836ff87af62c",
+      "name": "Sticky_Alerta",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Error_Trigger": {
+      "main": [
+        [
+          {
+            "node": "Preparar_Aviso_Equipo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar_Aviso_Equipo": {
+      "main": [
+        [
+          {
+            "node": "Gmail_Alerta_Equipo_Humano",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "b627dea7-3a42-4c7a-a865-590a7be901e2",
+  "meta": {
+    "instanceId": "c9e8583262d4fc38be4bad9d3ab204f7db90e9c9898979d0b3e1a7bb8efa3c45"
+  },
+  "nodeGroups": [],
+  "id": "xWxViKfQOfAISiYl",
+  "tags": []
+}
