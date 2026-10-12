@@ -1,0 +1,187 @@
+{
+  "name": "PF_Indexar_Manual_RAG",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Cargar manual institucional - Clínica Predio AFA",
+        "formDescription": "Subí el manual en PDF. Se indexa en la base de conocimiento que consulta el asistente (reemplaza la carga anterior).",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Manual institucional",
+              "fieldType": "file",
+              "acceptFileTypes": ".pdf",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "idx-0001",
+      "name": "Form_Trigger_Cargar_Manual",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [
+        -600,
+        300
+      ],
+      "webhookId": "pf-form-cargar-manual-afa"
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "memoryKey": {
+          "__rl": true,
+          "value": "clinica_predio_afa_kb_final",
+          "mode": "list",
+          "cachedResultName": "clinica_predio_afa_kb_final"
+        },
+        "clearStore": true,
+        "options": {}
+      },
+      "id": "idx-0002",
+      "name": "Vector_Store_Insertar_Manual",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreInMemory",
+      "typeVersion": 1.3,
+      "position": [
+        -340,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "dataType": "binary",
+        "binaryDataKey": "Manual_institucional",
+        "options": {
+          "metadata": {
+            "metadataValues": [
+              {
+                "name": "documento",
+                "value": "Manual_Procedimientos_Clinica_Predio_AFA.pdf"
+              },
+              {
+                "name": "fuente",
+                "value": "Manual de Procedimientos de la Clínica Predio AFA"
+              },
+              {
+                "name": "version",
+                "value": "v1.0"
+              }
+            ]
+          }
+        }
+      },
+      "id": "idx-0003",
+      "name": "Default_Data_Loader_Manual",
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "typeVersion": 1.1,
+      "position": [
+        -340,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "chunkSize": 800,
+        "chunkOverlap": 100,
+        "options": {}
+      },
+      "id": "idx-0004",
+      "name": "Text_Splitter_Fragmentar_Manual",
+      "type": "@n8n/n8n-nodes-langchain.textSplitterRecursiveCharacterTextSplitter",
+      "typeVersion": 1,
+      "position": [
+        -340,
+        700
+      ]
+    },
+    {
+      "parameters": {
+        "modelName": "embed-multilingual-v3.0"
+      },
+      "id": "idx-0005",
+      "name": "Embeddings_Cohere_Manual",
+      "type": "@n8n-nodes-langchain.embeddingsCohere",
+      "typeVersion": 1,
+      "position": [
+        -120,
+        520
+      ],
+      "credentials": {
+        "cohereApi": {
+          "id": "REEMPLAZAR_CON_TU_CREDENCIAL_COHERE",
+          "name": "CohereApi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## Cargar el manual (RAG)\n1. Abrí el formulario de este workflow y subí el PDF.\n2. El manual se parte en fragmentos de 800 letras y cada uno guarda sus datos reales: documento, fuente, versión y número de página.\n3. Cada carga reemplaza a la anterior (no se duplican fragmentos).\nSi n8n se reinicia, hay que volver a cargar el manual: un solo paso.",
+        "height": 190,
+        "width": 700,
+        "color": 5
+      },
+      "id": "idx-0006",
+      "name": "Sticky_Indexar",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -640,
+        60
+      ]
+    }
+  ],
+  "connections": {
+    "Form_Trigger_Cargar_Manual": {
+      "main": [
+        [
+          {
+            "node": "Vector_Store_Insertar_Manual",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Default_Data_Loader_Manual": {
+      "ai_document": [
+        [
+          {
+            "node": "Vector_Store_Insertar_Manual",
+            "type": "ai_document",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Text_Splitter_Fragmentar_Manual": {
+      "ai_textSplitter": [
+        [
+          {
+            "node": "Default_Data_Loader_Manual",
+            "type": "ai_textSplitter",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings_Cohere_Manual": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Vector_Store_Insertar_Manual",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "instanceId": "proyecto-final-pf_indexar_manual_rag"
+  }
+}

@@ -1,0 +1,310 @@
+{
+  "name": "PF_Worker_Despacho",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "dp-0001",
+      "name": "Execute_Workflow_Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -700,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepara el despacho según quién validó la respuesta (controlador, o persona con botón Aprobar / Editar).\nconst d = $input.first().json;\nconst modos = {\n  aceptada:        { ruta: 'ACEPTAR',          asunto: 'Re: tu consulta - Clínica Predio AFA',                 estado: 'borrador_creado' },\n  aprobada_humano: { ruta: 'ESCALAR_APROBADO', asunto: 'Re: tu consulta - Clínica Predio AFA (aprobada)',      estado: 'borrador_creado' },\n  edicion_manual:  { ruta: 'ESCALAR_EDICION',  asunto: 'Re: tu consulta - Clínica Predio AFA (para editar)',   estado: 'borrador_para_editar' }\n};\nconst m = modos[d.modo] || modos.edicion_manual;\nconst limpia = String(d.respuesta_agente || '').trim();\nreturn [{ json: {\n  ...d,\n  ruta_final_registrada: m.ruta,\n  asunto_borrador: m.asunto,\n  cuerpo_borrador: limpia,\n  estado_despacho: m.estado,\n  canal: 'Gmail (borrador)',\n  fecha: new Date().toISOString(),\n  pregunta: d.mensaje,\n  respuesta_final: limpia,\n  fuentes_citadas: (d.fuentes_citadas || []).join(' | '),\n  costo_usd: Number(d.costo_acumulado || d.costo_usd || 0)\n} }];\n"
+      },
+      "id": "dp-0002",
+      "name": "Preparar_Despacho",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "CRM_Resultados",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "traceId": "={{ $json.traceId }}",
+            "fecha": "={{ $json.fecha }}",
+            "session_id": "={{ $json.session_id }}",
+            "pregunta": "={{ $json.pregunta }}",
+            "respuesta_final": "={{ $json.respuesta_final }}",
+            "exactitud_factual": "={{ $json.exactitud_factual }}",
+            "ruta_final_registrada": "={{ $json.ruta_final_registrada }}",
+            "aprobado_por": "={{ $json.aprobado_por }}",
+            "fuentes_citadas": "={{ $json.fuentes_citadas }}",
+            "respondio_no_se": "={{ $json.respondio_no_se }}",
+            "estado_despacho": "={{ $json.estado_despacho }}",
+            "canal": "={{ $json.canal }}",
+            "costo_usd": "={{ $json.costo_usd }}"
+          },
+          "matchingColumns": [
+            "traceId"
+          ],
+          "schema": [
+            {
+              "id": "traceId",
+              "displayName": "traceId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "fecha",
+              "displayName": "fecha",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "session_id",
+              "displayName": "session_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "pregunta",
+              "displayName": "pregunta",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "respuesta_final",
+              "displayName": "respuesta_final",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "exactitud_factual",
+              "displayName": "exactitud_factual",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ruta_final_registrada",
+              "displayName": "ruta_final_registrada",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "aprobado_por",
+              "displayName": "aprobado_por",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "fuentes_citadas",
+              "displayName": "fuentes_citadas",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "respondio_no_se",
+              "displayName": "respondio_no_se",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "estado_despacho",
+              "displayName": "estado_despacho",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "canal",
+              "displayName": "canal",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "costo_usd",
+              "displayName": "costo_usd",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "dp-0003",
+      "name": "Sheets_CRM_Registrar",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        -220,
+        300
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REEMPLAZAR_CON_TU_CREDENCIAL_GOOGLE_SHEETS",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "draft",
+        "operation": "create",
+        "subject": "={{ $('Preparar_Despacho').first().json.asunto_borrador }}",
+        "emailType": "text",
+        "message": "={{ $('Preparar_Despacho').first().json.cuerpo_borrador }}",
+        "options": {
+          "sendTo": "santiborau@gmail.com"
+        }
+      },
+      "id": "dp-0004",
+      "name": "Gmail_Crear_Borrador",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        20,
+        300
+      ],
+      "retryOnFail": false,
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "oVaFZxuzOuewOJeN",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $('Preparar_Despacho').first().json;\nreturn [{ json: { status: 'ok', modo: d.modo, aprobado_por: d.aprobado_por, ruta_final_registrada: d.ruta_final_registrada,\n  estado_despacho: d.estado_despacho, canal: d.canal } }];\n"
+      },
+      "id": "dp-0005",
+      "name": "Salida_Despacho",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Worker: despacho del resultado validado\nSolo se llega acá después del supervisor (o de una persona).\n1. Registra el caso en el CRM (Google Sheets, pestaña CRM_Resultados) con upsert por traceId: no duplica.\n2. Crea un borrador en Gmail (canal de salida). Nunca envía solo al paciente.\nOrden a propósito: primero el registro, después el borrador, y sin reintentos automáticos en el envío para no duplicarlo.",
+        "height": 170,
+        "width": 1000,
+        "color": 3
+      },
+      "id": "dp-0006",
+      "name": "Sticky_Despacho",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -720,
+        100
+      ]
+    }
+  ],
+  "connections": {
+    "Execute_Workflow_Trigger": {
+      "main": [
+        [
+          {
+            "node": "Preparar_Despacho",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar_Despacho": {
+      "main": [
+        [
+          {
+            "node": "Sheets_CRM_Registrar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sheets_CRM_Registrar": {
+      "main": [
+        [
+          {
+            "node": "Gmail_Crear_Borrador",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail_Crear_Borrador": {
+      "main": [
+        [
+          {
+            "node": "Salida_Despacho",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "instanceId": "proyecto-final-pf_worker_despacho"
+  }
+}

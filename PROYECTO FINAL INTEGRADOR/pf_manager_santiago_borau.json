@@ -1,0 +1,1353 @@
+{
+  "name": "PF_Manager_Clinica_Predio_AFA",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "clinica-consulta",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "mg-0001",
+      "name": "Webhook_Recepcion",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -1900,
+        300
+      ],
+      "webhookId": "pf-webhook-clinica-consulta"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Lee la petición del webhook (GET ?mensaje=...&session_id=...&id=...) y arma el caso con su código único.\nconst q = $input.first().json.query || {};\nconst mensaje = String(q.mensaje || '').trim().slice(0, 600);\nconst session_id = String(q.session_id || 'anonimo').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40) || 'anonimo';\nconst idCliente = String(q.id || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 60);\n// Clave de idempotencia: el id que manda el cliente; si no manda, sesión + mensaje + ventana de 5 minutos.\nlet clave;\nif (idCliente) clave = 'id-' + idCliente;\nelse {\n  let h = 5381; const s = (session_id + '|' + mensaje.toLowerCase());\n  for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;\n  clave = 'h-' + h.toString(36) + '-' + Math.floor(Date.now() / 300000);\n}\nreturn [{ json: {\n  traceId: 'F-' + Date.now(),\n  clave_idempotencia: clave,\n  session_id, mensaje,\n  valido: mensaje.length > 0,\n  fecha_recepcion: new Date().toISOString(),\n  intentos: 0, critica_previa: '', respuesta_previa: '', resumen_previo: '', costo_acumulado: 0\n} }];\n"
+      },
+      "id": "mg-0002",
+      "name": "Preparar_Solicitud",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "mg-0003-c",
+              "leftValue": "={{ $json.valido }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "mg-0003",
+      "name": "If_Solicitud_Valida",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -1460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"estado\": \"recibido\", \"codigo_recepcion\": $json.traceId, \"mensaje\": \"Consulta recibida. Se procesa en segundo plano.\" } }}",
+        "options": {
+          "responseCode": 202
+        }
+      },
+      "id": "mg-0004",
+      "name": "Respond_Recibido_202",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -1240,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"estado\": \"rechazado\", \"motivo\": \"Falta el parámetro mensaje\" } }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "mg-0005",
+      "name": "Respond_Rechazado_400",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -1240,
+        460
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "airtableTokenApi",
+        "resource": "record",
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "app2QjeQtQTYqYmYL",
+          "mode": "id",
+          "cachedResultUrl": "https://airtable.com/app2QjeQtQTYqYmYL"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tbluOGmoTn6ar1CBM",
+          "mode": "id",
+          "cachedResultName": "SOLICITUDES_PROCESADAS",
+          "cachedResultUrl": "https://airtable.com/app2QjeQtQTYqYmYL/tbluOGmoTn6ar1CBM"
+        },
+        "filterByFormula": "={{ '{clave_idempotencia} = \"' + $json.clave_idempotencia + '\"' }}",
+        "options": {}
+      },
+      "id": "mg-0006",
+      "name": "Airtable_Buscar_Duplicado",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "alwaysOutputData": true,
+      "position": [
+        -1020,
+        220
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "REEMPLAZAR_CON_TU_CREDENCIAL_AIRTABLE",
+          "name": "Airtable account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Si la misma petición ya se completó (o sigue en proceso hace menos de 15 minutos) no se vuelve a procesar.\n// Una petición con estado 'error' sí se puede reintentar.\nconst base = $('Preparar_Solicitud').first().json;\nconst filas = $input.all().map(i => (i.json.fields || i.json));\nconst ahora = Date.now();\nconst dup = filas.some(f => {\n  if (!f || !f.estado) return false;\n  if (f.estado === 'completado') return true;\n  if (f.estado === 'en_proceso') {\n    const t = Date.parse(f.fecha_recepcion || '');\n    return isNaN(t) ? true : (ahora - t) < 15 * 60 * 1000;\n  }\n  return false;\n});\nreturn [{ json: { ...base, es_duplicado: dup } }];\n"
+      },
+      "id": "mg-0007",
+      "name": "Evaluar_Duplicado",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -800,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "mg-0008-c",
+              "leftValue": "={{ $json.es_duplicado }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "mg-0008",
+      "name": "If_Es_Duplicado",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -580,
+        220
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "mg-0009",
+      "name": "Fin_Duplicado_Ignorado",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        -360,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "airtableTokenApi",
+        "resource": "record",
+        "operation": "upsert",
+        "base": {
+          "__rl": true,
+          "value": "app2QjeQtQTYqYmYL",
+          "mode": "id",
+          "cachedResultUrl": "https://airtable.com/app2QjeQtQTYqYmYL"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tbluOGmoTn6ar1CBM",
+          "mode": "id",
+          "cachedResultName": "SOLICITUDES_PROCESADAS",
+          "cachedResultUrl": "https://airtable.com/app2QjeQtQTYqYmYL/tbluOGmoTn6ar1CBM"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "clave_idempotencia": "={{ $json.clave_idempotencia }}",
+            "traceId": "={{ $json.traceId }}",
+            "session_id": "={{ $json.session_id }}",
+            "mensaje": "={{ $json.mensaje }}",
+            "estado": "en_proceso",
+            "fecha_recepcion": "={{ $json.fecha_recepcion }}"
+          },
+          "matchingColumns": [
+            "clave_idempotencia"
+          ],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "id": "mg-0010",
+      "name": "Airtable_Registrar_Recepcion",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        -360,
+        220
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "REEMPLAZAR_CON_TU_CREDENCIAL_AIRTABLE",
+          "name": "Airtable account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: $('Evaluar_Duplicado').first().json }];\n"
+      },
+      "id": "mg-0011",
+      "name": "Restaurar_Estado",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -140,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { ...$input.first().json, operacion_memoria: 'leer' } }];\n"
+      },
+      "id": "mg-0012",
+      "name": "Preparar_Leer_Memoria",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        80,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "REEMPLAZAR_CON_ID_PF_WORKER_MEMORIA",
+          "mode": "list",
+          "cachedResultName": "PF_Worker_Memoria"
+        },
+        "options": {
+          "waitForSubWorkflow": true,
+          "timeout": 60
+        }
+      },
+      "id": "mg-0013",
+      "name": "Execute_Worker_Memoria",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        300,
+        220
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Suma la memoria de la sesión al caso. Si la memoria falló, sigue sin historial.\nconst base = $('Restaurar_Estado').first().json;\nconst r = $input.first().json || {};\nreturn [{ json: { ...base, resumen_previo: r.resumen_previo || '', cantidad_mensajes_previa: r.cantidad_mensajes || 0 } }];\n"
+      },
+      "id": "mg-0014",
+      "name": "Fusionar_Memoria",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Punto de entrada del bucle de corrección: acá vuelve el caso cuando el controlador pide corregir.\nreturn [{ json: { ...$input.first().json } }];\n"
+      },
+      "id": "mg-0015",
+      "name": "Preparar_Entrada_Agente",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        740,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "REEMPLAZAR_CON_ID_PF_WORKER_AGENTE_RAG",
+          "mode": "list",
+          "cachedResultName": "PF_Worker_Agente_RAG"
+        },
+        "options": {
+          "waitForSubWorkflow": true,
+          "timeout": 120
+        }
+      },
+      "id": "mg-0016",
+      "name": "Execute_Worker_Agente_RAG",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        960,
+        220
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $('Preparar_Entrada_Agente').first().json;\nconst r = $input.first().json;\nreturn [{ json: { ...base,\n  respuesta_agente: r.respuesta_agente, contexto_recuperado: r.contexto_recuperado, fuentes_citadas: r.fuentes_citadas || [],\n  paginas_recuperadas: r.paginas_recuperadas || [], cita_valida: r.cita_valida, respondio_no_se: r.respondio_no_se, uso_rag: r.uso_rag } }];\n"
+      },
+      "id": "mg-0017",
+      "name": "Fusionar_Agente",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1180,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "REEMPLAZAR_CON_ID_PF_WORKER_JUEZ",
+          "mode": "list",
+          "cachedResultName": "PF_Worker_Juez"
+        },
+        "options": {
+          "waitForSubWorkflow": true,
+          "timeout": 120
+        }
+      },
+      "id": "mg-0018",
+      "name": "Execute_Worker_Juez",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        1400,
+        220
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $('Fusionar_Agente').first().json;\nconst r = $input.first().json;\nreturn [{ json: { ...base,\n  exactitud_factual: r.exactitud_factual, estado_veredicto: r.estado_veredicto, cita_correcta: r.cita_correcta,\n  critica: r.critica, ruta_final: r.ruta_final, tokens_entrada: r.tokens_entrada, tokens_salida: r.tokens_salida,\n  costo_usd: r.costo_usd, costo_acumulado: Number(((base.costo_acumulado || 0) + r.costo_usd).toFixed(6)),\n  veredicto_json: r.veredicto_json } }];\n"
+      },
+      "id": "mg-0019",
+      "name": "Fusionar_Juez",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1620,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "sw-a",
+                    "leftValue": "={{ $json.ruta_final }}",
+                    "rightValue": "ACEPTAR",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Aceptar"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "sw-c",
+                    "leftValue": "={{ $json.ruta_final }}",
+                    "rightValue": "CORREGIR",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Corregir (Self-Healing)"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "sw-e",
+                    "leftValue": "={{ $json.ruta_final }}",
+                    "rightValue": "ESCALAR",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Escalar (Humano)"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "Fallback (valor inesperado) → Humano"
+        }
+      },
+      "id": "mg-0020",
+      "name": "Switch_Veredicto",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        1840,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Marca el modo de despacho: aceptada\nconst d = $input.first().json;\nreturn [{ json: { ...d, modo: 'aceptada', aprobado_por: 'Controlador IA (nota ' + d.exactitud_factual + '/5)' } }];\n"
+      },
+      "id": "mg-0021",
+      "name": "Modo_Aceptada",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2080,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Ruta Corregir: vuelve al asistente con la crítica del controlador. intentos sube de a 1 (máximo 2).\nconst d = $input.first().json;\nreturn [{ json: { ...d, intentos: d.intentos + 1, critica_previa: d.critica, respuesta_previa: d.respuesta_agente } }];\n"
+      },
+      "id": "mg-0022",
+      "name": "Preparar_Reintento",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2080,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "sendAndWait",
+        "sendTo": "santiborau@gmail.com",
+        "subject": "=REVISION HUMANA - caso {{ $json.traceId }}",
+        "message": "=El controlador de calidad no aceptó esta respuesta.\n\nConsulta: {{ $json.mensaje }}\n\nRespuesta del asistente: {{ $json.respuesta_agente }}\n\nFuentes citadas: {{ $json.fuentes_citadas.join(' | ') }}\nPuntaje del controlador: {{ $json.exactitud_factual }}/5 ({{ $json.estado_veredicto }})\nCrítica: {{ $json.critica }}\nIntentos de corrección: {{ $json.intentos }}\n\nAprobar = das el visto bueno y se crea el borrador. Editar = se crea un borrador en Gmail para que lo corrijas a mano.",
+        "approvalOptions": {
+          "values": {
+            "approvalType": "double",
+            "approveLabel": "Aprobar",
+            "disapproveLabel": "Editar"
+          }
+        },
+        "options": {}
+      },
+      "id": "mg-0023",
+      "name": "Gmail_Aviso_Humano_HITL",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        2080,
+        440
+      ],
+      "webhookId": "pf-gmail-hitl-aprobacion",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "oVaFZxuzOuewOJeN",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "mg-0024-c",
+              "leftValue": "={{ $json.data.approved }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "mg-0024",
+      "name": "If_Humano_Aprobo",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2320,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Marca el modo de despacho: aprobada_humano\nconst d = $('Fusionar_Juez').first().json;\nreturn [{ json: { ...d, modo: 'aprobada_humano', aprobado_por: 'Persona (botón Aprobar)' } }];\n"
+      },
+      "id": "mg-0025",
+      "name": "Modo_Aprobada_Humano",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2560,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Marca el modo de despacho: edicion_manual\nconst d = $('Fusionar_Juez').first().json;\nreturn [{ json: { ...d, modo: 'edicion_manual', aprobado_por: 'Persona (botón Editar)' } }];\n"
+      },
+      "id": "mg-0026",
+      "name": "Modo_Edicion_Manual",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2560,
+        540
+      ]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "REEMPLAZAR_CON_ID_PF_WORKER_DESPACHO",
+          "mode": "list",
+          "cachedResultName": "PF_Worker_Despacho"
+        },
+        "options": {
+          "waitForSubWorkflow": true,
+          "timeout": 120
+        }
+      },
+      "id": "mg-0027",
+      "name": "Execute_Worker_Despacho",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        2800,
+        220
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $('Fusionar_Juez').first().json;\nconst r = $input.first().json;\nreturn [{ json: { ...base, modo: r.modo, aprobado_por: r.aprobado_por, ruta_final_registrada: r.ruta_final_registrada,\n  estado_despacho: r.estado_despacho, canal: r.canal } }];\n"
+      },
+      "id": "mg-0028",
+      "name": "Fusionar_Despacho",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3020,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { ...$input.first().json, operacion_memoria: 'guardar' } }];\n"
+      },
+      "id": "mg-0029",
+      "name": "Preparar_Guardar_Memoria",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3240,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "REEMPLAZAR_CON_ID_PF_WORKER_MEMORIA",
+          "mode": "list",
+          "cachedResultName": "PF_Worker_Memoria"
+        },
+        "options": {
+          "waitForSubWorkflow": true,
+          "timeout": 60
+        }
+      },
+      "id": "mg-0030",
+      "name": "Execute_Worker_Memoria_Guardar",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        3460,
+        220
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $('Fusionar_Despacho').first().json;\nconst resumen = JSON.stringify({ exactitud_factual: d.exactitud_factual, aprobado_por: d.aprobado_por, ruta: d.ruta_final_registrada,\n  fuentes: (d.fuentes_citadas || []).join(' | '), costo_usd: d.costo_acumulado, respuesta: String(d.respuesta_agente || '').slice(0, 300) });\nreturn [{ json: { clave_idempotencia: d.clave_idempotencia, traceId: d.traceId, estado: 'completado',\n  ruta_final: d.ruta_final_registrada, resultado: resumen } }];\n"
+      },
+      "id": "mg-0031",
+      "name": "Armar_Cierre_Solicitud",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3680,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "airtableTokenApi",
+        "resource": "record",
+        "operation": "upsert",
+        "base": {
+          "__rl": true,
+          "value": "app2QjeQtQTYqYmYL",
+          "mode": "id",
+          "cachedResultUrl": "https://airtable.com/app2QjeQtQTYqYmYL"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tbluOGmoTn6ar1CBM",
+          "mode": "id",
+          "cachedResultName": "SOLICITUDES_PROCESADAS",
+          "cachedResultUrl": "https://airtable.com/app2QjeQtQTYqYmYL/tbluOGmoTn6ar1CBM"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "clave_idempotencia": "={{ $json.clave_idempotencia }}",
+            "traceId": "={{ $json.traceId }}",
+            "estado": "={{ $json.estado }}",
+            "ruta_final": "={{ $json.ruta_final }}",
+            "resultado": "={{ $json.resultado }}"
+          },
+          "matchingColumns": [
+            "clave_idempotencia"
+          ],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "id": "mg-0032",
+      "name": "Airtable_Cerrar_Solicitud",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        3900,
+        220
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "REEMPLAZAR_CON_TU_CREDENCIAL_AIRTABLE",
+          "name": "Airtable account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Rama de error: arma el aviso para el equipo humano con el paso que falló y el código del caso.\nconst pasos = [\n  ['Airtable_Buscar_Duplicado', 'el libro de recepción (Airtable)'],\n  ['Airtable_Registrar_Recepcion', 'el libro de recepción (Airtable)'],\n  ['Execute_Worker_Memoria', 'la memoria de la conversación'],\n  ['Execute_Worker_Agente_RAG', 'el asistente que consulta el manual'],\n  ['Execute_Worker_Juez', 'el controlador de calidad'],\n  ['Execute_Worker_Despacho', 'el despacho (borrador de Gmail y registro en el CRM)']\n];\nlet falla = 'un paso del sistema';\nfor (const [n, d] of pasos) { try { if ($(n).isExecuted) falla = d; } catch (e) {} }\nconst e = $input.first().json || {};\nconst motivo = String((e.error && (e.error.message || e.error)) || e.message || 'sin detalle').slice(0, 300);\nconst base = $('Preparar_Solicitud').first().json;\nconst asunto = 'ALERTA - consulta sin responder (caso ' + base.traceId + ')';\nconst cuerpo = [\n  'Una consulta de un paciente no pudo completarse porque falló ' + falla + '.',\n  '',\n  'Código de caso: ' + base.traceId,\n  'Qué pasó: ' + motivo,\n  'Estado: la consulta quedó registrada como error y el paciente todavía no recibió respuesta.',\n  '',\n  'Qué hacer: una persona debe responder esta consulta a mano, o volver a enviarla cuando el servicio se recupere. '\n  + 'El sistema no duplica registros ni envíos, así que reenviar es seguro.'\n].join('\\n');\nreturn [{ json: { ...base, estado: 'error', ruta_final: 'ERROR', resultado: 'Falla en ' + falla + ': ' + motivo, asunto, cuerpo } }];\n"
+      },
+      "id": "mg-0033",
+      "name": "Preparar_Alerta_Falla",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1400,
+        760
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "santiborau@gmail.com",
+        "subject": "={{ $json.asunto }}",
+        "emailType": "text",
+        "message": "={{ $json.cuerpo }}",
+        "options": {}
+      },
+      "id": "mg-0034",
+      "name": "Gmail_Alerta_Equipo_Humano",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1640,
+        760
+      ],
+      "retryOnFail": false,
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "oVaFZxuzOuewOJeN",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "airtableTokenApi",
+        "resource": "record",
+        "operation": "upsert",
+        "base": {
+          "__rl": true,
+          "value": "app2QjeQtQTYqYmYL",
+          "mode": "id",
+          "cachedResultUrl": "https://airtable.com/app2QjeQtQTYqYmYL"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tbluOGmoTn6ar1CBM",
+          "mode": "id",
+          "cachedResultName": "SOLICITUDES_PROCESADAS",
+          "cachedResultUrl": "https://airtable.com/app2QjeQtQTYqYmYL/tbluOGmoTn6ar1CBM"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "clave_idempotencia": "={{ $json.clave_idempotencia }}",
+            "traceId": "={{ $json.traceId }}",
+            "estado": "error",
+            "ruta_final": "ERROR",
+            "resultado": "={{ $json.resultado }}"
+          },
+          "matchingColumns": [
+            "clave_idempotencia"
+          ],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "id": "mg-0035",
+      "name": "Airtable_Marcar_Error",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        1880,
+        760
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "REEMPLAZAR_CON_TU_CREDENCIAL_AIRTABLE",
+          "name": "Airtable account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "content": "## 1. Recepción asincrónica\nEl webhook recibe la consulta y responde AL INSTANTE (código 202 con el código de recepción). Todo lo demás ocurre en segundo plano.\nEl libro de recepción (Airtable) impide procesar dos veces la misma petición.",
+        "height": 120,
+        "width": 1160,
+        "color": 4
+      },
+      "id": "mg-0036",
+      "name": "Sticky_1_Recepcion",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1920,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 2. Equipo de trabajo (Manager-Worker)\nEl Manager no razona: coordina. Delega en workers independientes: memoria, asistente con RAG, controlador de calidad y despacho.",
+        "height": 100,
+        "width": 1500,
+        "color": 3
+      },
+      "id": "mg-0037",
+      "name": "Sticky_2_Equipo",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -160,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 3. Supervisor obligatorio\nNada se registra ni se despacha sin pasar por el controlador. Corregir: vuelve al asistente (máx. 2 veces). Escalar: mail con botones Aprobar / Editar.",
+        "height": 100,
+        "width": 780,
+        "color": 6
+      },
+      "id": "mg-0038",
+      "name": "Sticky_3_Supervisor",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1360,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 4. Salida y cierre\nBorrador en Gmail + registro en el CRM (Sheets). Se guarda la memoria de la sesión y se cierra la solicitud como 'completado'.",
+        "height": 100,
+        "width": 1240,
+        "color": 5
+      },
+      "id": "mg-0039",
+      "name": "Sticky_4_Despacho",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2780,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 5. Ramas de error\nSi una API externa se cae (asistente, controlador, despacho o Airtable): se avisa por Gmail al equipo humano, la solicitud queda como 'error' y se puede reenviar sin duplicar.",
+        "height": 120,
+        "width": 760,
+        "color": 3
+      },
+      "id": "mg-0040",
+      "name": "Sticky_5_Errores",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1380,
+        600
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook_Recepcion": {
+      "main": [
+        [
+          {
+            "node": "Preparar_Solicitud",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar_Solicitud": {
+      "main": [
+        [
+          {
+            "node": "If_Solicitud_Valida",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If_Solicitud_Valida": {
+      "main": [
+        [
+          {
+            "node": "Respond_Recibido_202",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond_Rechazado_400",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond_Recibido_202": {
+      "main": [
+        [
+          {
+            "node": "Airtable_Buscar_Duplicado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Airtable_Buscar_Duplicado": {
+      "main": [
+        [
+          {
+            "node": "Evaluar_Duplicado",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Preparar_Alerta_Falla",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluar_Duplicado": {
+      "main": [
+        [
+          {
+            "node": "If_Es_Duplicado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If_Es_Duplicado": {
+      "main": [
+        [
+          {
+            "node": "Fin_Duplicado_Ignorado",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Airtable_Registrar_Recepcion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Airtable_Registrar_Recepcion": {
+      "main": [
+        [
+          {
+            "node": "Restaurar_Estado",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Preparar_Alerta_Falla",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Restaurar_Estado": {
+      "main": [
+        [
+          {
+            "node": "Preparar_Leer_Memoria",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar_Leer_Memoria": {
+      "main": [
+        [
+          {
+            "node": "Execute_Worker_Memoria",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute_Worker_Memoria": {
+      "main": [
+        [
+          {
+            "node": "Fusionar_Memoria",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fusionar_Memoria": {
+      "main": [
+        [
+          {
+            "node": "Preparar_Entrada_Agente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar_Entrada_Agente": {
+      "main": [
+        [
+          {
+            "node": "Execute_Worker_Agente_RAG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute_Worker_Agente_RAG": {
+      "main": [
+        [
+          {
+            "node": "Fusionar_Agente",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Preparar_Alerta_Falla",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fusionar_Agente": {
+      "main": [
+        [
+          {
+            "node": "Execute_Worker_Juez",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute_Worker_Juez": {
+      "main": [
+        [
+          {
+            "node": "Fusionar_Juez",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Preparar_Alerta_Falla",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fusionar_Juez": {
+      "main": [
+        [
+          {
+            "node": "Switch_Veredicto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch_Veredicto": {
+      "main": [
+        [
+          {
+            "node": "Modo_Aceptada",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Preparar_Reintento",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gmail_Aviso_Humano_HITL",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gmail_Aviso_Humano_HITL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Modo_Aceptada": {
+      "main": [
+        [
+          {
+            "node": "Execute_Worker_Despacho",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar_Reintento": {
+      "main": [
+        [
+          {
+            "node": "Preparar_Entrada_Agente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail_Aviso_Humano_HITL": {
+      "main": [
+        [
+          {
+            "node": "If_Humano_Aprobo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If_Humano_Aprobo": {
+      "main": [
+        [
+          {
+            "node": "Modo_Aprobada_Humano",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Modo_Edicion_Manual",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Modo_Aprobada_Humano": {
+      "main": [
+        [
+          {
+            "node": "Execute_Worker_Despacho",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Modo_Edicion_Manual": {
+      "main": [
+        [
+          {
+            "node": "Execute_Worker_Despacho",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute_Worker_Despacho": {
+      "main": [
+        [
+          {
+            "node": "Fusionar_Despacho",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Preparar_Alerta_Falla",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fusionar_Despacho": {
+      "main": [
+        [
+          {
+            "node": "Preparar_Guardar_Memoria",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar_Guardar_Memoria": {
+      "main": [
+        [
+          {
+            "node": "Execute_Worker_Memoria_Guardar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute_Worker_Memoria_Guardar": {
+      "main": [
+        [
+          {
+            "node": "Armar_Cierre_Solicitud",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Armar_Cierre_Solicitud": {
+      "main": [
+        [
+          {
+            "node": "Airtable_Cerrar_Solicitud",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar_Alerta_Falla": {
+      "main": [
+        [
+          {
+            "node": "Gmail_Alerta_Equipo_Humano",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail_Alerta_Equipo_Humano": {
+      "main": [
+        [
+          {
+            "node": "Airtable_Marcar_Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "instanceId": "proyecto-final-pf_manager_clinica_predio_afa"
+  }
+}
