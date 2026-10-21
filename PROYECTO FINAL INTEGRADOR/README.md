@@ -25,7 +25,7 @@ Una clínica deportiva recibe muchas consultas repetidas (cancelaciones, ausenci
 ```
 README.md
 workflows/            Los 7 flujos de n8n exportados (.json)
-base-conocimiento/    Manual ficticio usado como única fuente del asistente (RAG)
+base-conocimiento/    Manual ficticio (versión 1.1, con aranceles) usado como única fuente del asistente (RAG)
 auditoria/            Pruebas reales con la calificación del juez (.csv)
 capturas/             Capturas del canvas de n8n (arquitectura)
 ```
@@ -50,10 +50,10 @@ Para importar uno: en n8n, menú del flujo, **Import from file**. Luego hay que 
 - **Idempotencia (sin duplicados):** la tabla `SOLICITUDES_PROCESADAS` guarda una clave `id-<id>`. Si ya está `completado` o `en_proceso` hace menos de 15 minutos, la consulta se ignora. Si quedó en `error`, se puede reintentar. Los registros de CRM y auditoría se escriben por clave (upsert), nunca se duplican.
 - **RAG:** embeddings de Cohere y base vectorial en memoria de n8n. Trozos de 800 caracteres con solape de 100; se recuperan los 4 más cercanos. Cada trozo lleva metadatos `documento`, `fuente` y `version`.
 - **Citas:** formato `Fuente: <documento>, sección <n>`. El sistema verifica que la sección citada exista en los fragmentos recuperados; si no coincide, fuerza la corrección.
-- **Juez:** salida estructurada `exactitud_factual` (1 a 5), `estado_veredicto` (`ACEPTADO`, `CORREGIR`, `RECHAZADO`), `cita_correcta` y `critica`. **Umbral 4**: menos de 4 no se acepta. Regla extra: cualquier afirmación (cobros, multas, plazos, cifras) que no esté en el manual limita la nota a 2.
+- **Juez:** salida estructurada `exactitud_factual` (1 a 5), `estado_veredicto` (`ACEPTADO`, `CORREGIR`, `RECHAZADO`), `cita_correcta`, `critica` y `evidencia_factual` (hasta 3 afirmaciones clave, cada una con su sección del manual y si está respaldada). **Umbral 4**: menos de 4 no se acepta. Regla extra: cualquier afirmación (cobros, multas, plazos, cifras) que no esté en el manual limita la nota a 2.
 - **Ruta según veredicto:** aceptar y despachar, corregir (bucle de autocorrección, máximo **2 reintentos**), o escalar a una persona por Gmail (Aprobar / Editar).
 - **Memoria de largo plazo:** una fila por sesión en Airtable, que se lee antes de responder y se actualiza al final.
-- **Errores:** los nodos críticos tienen una rama de error que avisa por Gmail al equipo humano y marca la solicitud como `error`. Los reintentos automáticos solo se usan en el asistente y el juez. Además, todos los flujos usan `PF_Alerta_Errores` como flujo de error.
+- **Errores:** los nodos críticos tienen una rama de error que avisa por Gmail al equipo humano y marca la solicitud como `error`. Los reintentos automáticos solo se usan en el asistente y el juez. Además, el Manager y los workers de Memoria, Asistente, Juez y Despacho usan `PF_Alerta_Errores` como flujo de error.
 
 ## 5. Credenciales y parámetros de conexión (sin valores)
 
@@ -75,11 +75,10 @@ Para importar uno: en n8n, menú del flujo, **Import from file**. Luego hay que 
 | Parámetros de entrada | `mensaje`, `session_id`, `id` |
 | Modelo del asistente (Groq) | `openai/gpt-oss-20b`, temperatura 0.2 |
 | Modelo del juez (Groq) | `openai/gpt-oss-120b`, temperatura 0 |
-| Embeddings (Cohere) | `embed-multilingual-v3.0` |
+| Embeddings (Cohere) | `embed-english-v3.0` (1024 dimensiones) |
 | `UMBRAL` del juez | 4 |
 | `MAX_REINTENTOS` | 2 |
 | Trozos del manual | 800 caracteres, solape 100 |
-| Fragmentos recuperados | 4 |
 | Memoria vectorial | clave `clinica_predio_afa_kb_final` (en memoria; se pierde al reiniciar n8n, hay que volver a ejecutar `PF_Indexar_Manual_RAG`) |
 | Despacho | Borrador de Gmail (no se envía al paciente) |
 
@@ -106,24 +105,30 @@ El Manager y los workers se conectan con nodos "Execute Workflow" por ID. Esos I
 | `ruta_final` | `ACEPTAR`, `ESCALAR_APROBADO` o `ERROR` |
 | otros | campos de seguimiento de la solicitud (por ejemplo `traceId` y `session_id`) |
 
-**Airtable - `CONOCIMIENTO_CLINICA`:** tabla de apoyo de módulos anteriores.
+**Airtable - `CONOCIMIENTO_CLINICA`:** tabla de apoyo de módulos anteriores. Se le agregó la fila de aranceles de consultas particulares (ficticios), que también está en la sección 4.3 del manual.
 
 **Google Sheets - `Auditoria_Juez_M8`**
 
-- Pestaña `Auditoria_Final` (una fila por intento): `fecha`, `traceId`, `clave_auditoria` (traceId-intento), `session_id`, `pregunta`, `respuesta_agente`, `fuentes_citadas`, `cita_correcta`, `exactitud_factual`, `estado_veredicto`, `critica`, `intentos`, `ruta_final`, `tokens_entrada`, `tokens_salida`, `costo_usd`, `version_prompt`, `veredicto_json`.
-- Pestaña `CRM_Resultados` (una fila por consulta): `traceId`, `fecha`, `session_id`, `pregunta`, `respuesta_final`, `exactitud_factual`, `ruta_final_registrada`, `aprobado_por`, `fuentes_citadas`, `respondio_no_se`, `estado_despacho`, `canal`, `costo_usd`.
+- Pestaña `auditoria final` (una fila por intento): `fecha`, `traceId`, `clave_auditoria` (traceId-intento), `session_id`, `pregunta`, `respuesta_agente`, `fuentes_citadas`, `cita_correcta`, `exactitud_factual`, `estado_veredicto`, `critica`, `intentos`, `ruta_final`, `tokens_entrada`, `tokens_salida`, `costo_usd`, `version_prompt`, `veredicto_json`, `evidencia_factual`.
+- Pestaña `CRM_resultados` (una fila por consulta): `traceId`, `fecha`, `session_id`, `pregunta`, `respuesta_final`, `exactitud_factual`, `ruta_final_registrada`, `aprobado_por`, `fuentes_citadas`, `respondio_no_se`, `estado_despacho`, `canal`, `costo_usd`.
 
 ## 7. Pruebas realizadas
 
-El archivo `auditoria/auditoria_final_pruebas.csv` tiene las pruebas reales: respuesta normal con cita, "No sé" ante una pregunta fuera del manual, rechazo de consulta médica, premisa falsa, intento de inyección de instrucciones, y un caso donde el juez puso nota 2, el sistema corrigió y la segunda versión llegó a 5.
+**Auditoría oficial (12 de octubre, 10 consultas):** respuesta normal con cita, "No sé" ante una pregunta fuera del manual, rechazo de consulta médica, premisa falsa, intento de inyección de instrucciones, y un caso donde el juez puso nota 2, el sistema corrigió y la segunda versión llegó a 5. Nota media 4,6 en el primer intento y 4,9 final; 8 de 10 resueltas sin persona (las otras 2 se escalaron a propósito para probar el semáforo).
 
-También se probaron (y quedaron registradas en n8n, no en el CSV): duplicado ignorado, escalada a una persona con aprobación, y una caída simulada de API con alerta por correo.
+**Pruebas posteriores (21 de octubre, se informan aparte):** 11 consultas llegaron al juez; 8 se aceptaron al primer intento y 3 quedaron sin cerrar porque el tope de uso del modelo gratuito cortó la ejecución. Incluyen la prueba de que el campo `evidencia_factual` marca como no respaldada una tarifa inventada, y la corrección del manual para que el asistente conteste los aranceles (versión 1.1).
 
-**Costo medido:** alrededor de USD 0,001 por consulta (unos 5.700 a 6.200 tokens de entrada y 130 a 280 de salida), con precios equivalentes a GPT-4o-mini.
+**Prueba de estrés:** de 14 consultas enviadas con unos 12 segundos de diferencia, 9 fallaron por el tope de 8.000 tokens por minuto del plan gratuito de Groq. Quedaron registradas como `error` y se pueden reenviar.
+
+El archivo CSV de la carpeta `auditoria/` tiene las filas reales de la hoja `auditoria final`. También se probaron (y quedaron registradas en n8n, no en el CSV): duplicado ignorado, escalada a una persona con aprobación, y una caída simulada de API con alerta por correo.
+
+**Costo medido:** alrededor de USD 0,001 por consulta (unos 5.000 a 6.200 tokens de entrada y 130 a 280 de salida), con precios equivalentes a GPT-4o-mini.
 
 ## 8. Limitaciones conocidas
 
-- Los modelos gratuitos de Groq tienen un límite de tokens por minuto; por eso el asistente y el juez usan modelos distintos.
+- Los modelos gratuitos de Groq tienen un límite de 8.000 tokens por minuto: alcanza para más o menos una consulta por minuto. Por eso el asistente y el juez usan modelos distintos y, en producción, haría falta un plan de pago.
+- Las conexiones con Google (Sheets y Gmail) vencen y hay que volver a iniciar sesión en n8n.
+- El control de citas por código no reconoce secciones cuando el fragmento recuperado es una tabla, y un "No sé" no se puede verificar si el buscador no trajo el fragmento correcto.
 - La base vectorial en memoria se vacía al reiniciar n8n.
 - El cargador de documentos no guarda número de página: las citas son por documento y sección.
 - En una prueba, un juez más chico dejó pasar un cobro inventado; se reforzó la regla de verificación y se usó un juez más fuerte (ver informe).
